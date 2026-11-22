@@ -1,0 +1,681 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DocuMind AI — Hybrid PDF RAG Assistant</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace'],
+                    },
+                    colors: {
+                        brand: {
+                            emerald: '#10B981',
+                            teal: '#14B8A6',
+                            indigo: '#6366F1',
+                            violet: '#8B5CF6'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        body {
+            background-color: #07090E;
+            color: #F3F4F6;
+            overflow-x: hidden;
+        }
+        .glass-panel {
+            background: rgba(17, 21, 34, 0.75);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+        .glass-card {
+            background: rgba(26, 32, 48, 0.55);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.07);
+        }
+        .glass-input {
+            background: rgba(11, 14, 23, 0.85);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            transition: all 0.25s ease;
+        }
+        .glass-input:focus-within {
+            border-color: rgba(16, 185, 129, 0.6);
+            box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.15), 0 0 25px -5px rgba(99, 102, 241, 0.3);
+        }
+        .brand-gradient {
+            background: linear-gradient(135deg, #10B981 0%, #06B6D4 50%, #6366F1 100%);
+        }
+        .brand-gradient-text {
+            background: linear-gradient(135deg, #34D399 0%, #38BDF8 50%, #A78BFA 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: rgba(15, 23, 42, 0.3); }
+        ::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.15); border-radius: 9999px; }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(16, 185, 129, 0.5); }
+        .typing-dot {
+            animation: typingBounce 1.4s infinite ease-in-out both;
+        }
+        .typing-dot:nth-child(1) { animation-delay: -0.32s; }
+        .typing-dot:nth-child(2) { animation-delay: -0.16s; }
+        @keyframes typingBounce {
+            0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
+            40% { transform: scale(1); opacity: 1; }
+        }
+        .rag-answer p { margin-bottom: 0.75rem; line-height: 1.65; }
+        .rag-answer p:last-child { margin-bottom: 0; }
+        .rag-answer ul { list-style-type: disc; padding-left: 1.35rem; margin-bottom: 0.75rem; }
+        .rag-answer ol { list-style-type: decimal; padding-left: 1.35rem; margin-bottom: 0.75rem; }
+        .rag-answer li { margin-bottom: 0.35rem; line-height: 1.6; }
+        .rag-answer code {
+            font-family: 'JetBrains Mono', monospace;
+            background: rgba(255, 255, 255, 0.09);
+            padding: 0.15rem 0.4rem;
+            border-radius: 0.35rem;
+            font-size: 0.85em;
+            color: #6EE7B7;
+        }
+        .rag-answer pre {
+            background: rgba(10, 14, 23, 0.9);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 0.85rem;
+            border-radius: 0.5rem;
+            overflow-x: auto;
+            margin: 0.75rem 0;
+        }
+        .rag-answer pre code {
+            background: transparent;
+            padding: 0;
+            color: #E2E8F0;
+        }
+        .rag-answer strong { color: #FFFFFF; font-weight: 600; }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col relative">
+
+    <!-- Ambient Glow Background -->
+    <div class="fixed inset-0 pointer-events-none overflow-hidden z-0">
+        <div class="absolute -top-40 left-1/4 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl"></div>
+        <div class="absolute top-1/3 -right-20 w-80 h-80 bg-indigo-500/10 rounded-full blur-3xl"></div>
+    </div>
+
+    <!-- Header -->
+    <header class="relative z-10 border-b border-white/10 glass-panel sticky top-0">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl brand-gradient flex items-center justify-center shadow-lg shadow-emerald-500/20">
+                    <i data-lucide="file-text" class="w-5 h-5 text-white"></i>
+                </div>
+                <div>
+                    <div class="flex items-center gap-2">
+                        <h1 class="text-lg font-bold tracking-tight text-white">DocuMind <span class="brand-gradient-text">RAG</span></h1>
+                        <span class="text-[11px] font-mono uppercase tracking-wider px-2 py-0.5 rounded-full bg-white/5 border border-white/10 text-slate-300">FAISS + BM25 Hybrid</span>
+                    </div>
+                    <p class="text-xs text-slate-400 hidden sm:block">Strict Grounded Q&A with Page-Level Citations</p>
+                </div>
+            </div>
+
+            <div class="flex items-center gap-3">
+                <div id="backendStatusPill" class="flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-medium border bg-slate-800/70 border-white/10 text-slate-300">
+                    <span id="statusDot" class="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_#34d399]"></span>
+                    <span id="statusText">Connecting...</span>
+                </div>
+
+                <button id="refreshDocsBtn" title="Refresh Documents" class="p-2 rounded-xl text-slate-300 hover:text-white glass-card hover:bg-white/10 transition">
+                    <i data-lucide="rotate-cw" class="w-4 h-4"></i>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Workspace -->
+    <main class="relative z-10 flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        
+        <!-- Left Sidebar: Document Manager & Telemetry -->
+        <section class="lg:col-span-4 flex flex-col gap-5 lg:sticky lg:top-24">
+            
+            <!-- Document List & Active Switcher -->
+            <div class="glass-panel rounded-2xl p-5 shadow-2xl">
+                <div class="flex items-center justify-between mb-3.5">
+                    <h2 class="text-xs font-semibold uppercase tracking-wider text-slate-300 flex items-center gap-2">
+                        <i data-lucide="folder" class="w-4 h-4 text-emerald-400"></i>
+                        Available PDF Documents
+                    </h2>
+                    <span id="docCountBadge" class="font-mono text-[11px] px-2 py-0.5 rounded-md bg-white/5 text-slate-300 border border-white/10">
+                        0 files
+                    </span>
+                </div>
+
+                <div id="documentList" class="flex flex-col gap-2 max-h-60 overflow-y-auto pr-1">
+                    <div class="text-xs text-slate-400 p-3 text-center">Loading PDFs...</div>
+                </div>
+
+                <!-- Drag & Drop Upload Zone -->
+                <div class="mt-4 pt-4 border-t border-white/10">
+                    <label class="text-[11px] font-semibold uppercase tracking-wider text-slate-400 block mb-2">Upload New PDF</label>
+                    <div id="dropZone" class="border-2 border-dashed border-white/15 hover:border-emerald-500/50 rounded-xl p-4 text-center cursor-pointer transition bg-slate-900/40 hover:bg-slate-900/60 flex flex-col items-center justify-center gap-1.5">
+                        <i data-lucide="upload-cloud" class="w-6 h-6 text-emerald-400"></i>
+                        <span class="text-xs text-slate-300 font-medium">Click to select or drag & drop</span>
+                        <span class="text-[10px] text-slate-500">PDF files up to 50MB</span>
+                        <input id="fileInput" type="file" accept=".pdf" class="hidden" />
+                    </div>
+                    <div id="uploadProgress" class="hidden mt-2 p-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-300 flex items-center gap-2">
+                        <i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin"></i>
+                        <span id="uploadStatusText">Uploading & indexing document...</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Active Document Telemetry Card -->
+            <div class="glass-panel rounded-2xl p-5 shadow-2xl border border-white/10">
+                <div class="flex items-center justify-between mb-3">
+                    <span class="text-xs font-medium text-slate-300 flex items-center gap-1.5">
+                        <i data-lucide="cpu" class="w-3.5 h-3.5 text-indigo-400"></i>
+                        Active Document Telemetry
+                    </span>
+                    <span id="telemetryStatusBadge" class="text-[11px] font-mono px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">
+                        Indexed
+                    </span>
+                </div>
+
+                <div class="p-3 rounded-xl bg-slate-950/60 border border-white/5 mb-3 flex items-center gap-3">
+                    <div class="w-9 h-9 rounded-lg bg-rose-500/15 border border-rose-500/30 flex items-center justify-center shrink-0">
+                        <i data-lucide="file" class="w-4 h-4 text-rose-400"></i>
+                    </div>
+                    <div class="min-w-0 flex-1">
+                        <div id="activeDocTitle" class="text-xs font-semibold text-white truncate">The Ultimate Python Handbook.pdf</div>
+                        <div id="activeDocSub" class="text-[11px] text-slate-400">61 Pages • 1.65 MB</div>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-3 gap-2 text-center text-xs">
+                    <div class="glass-card rounded-xl p-2.5">
+                        <div class="text-[10px] text-slate-400">EMBEDDING</div>
+                        <div class="text-white mt-0.5 font-semibold truncate text-[11px]">MiniLM-L6-v2</div>
+                    </div>
+                    <div class="glass-card rounded-xl p-2.5">
+                        <div class="text-[10px] text-slate-400">RETRIEVAL</div>
+                        <div class="text-emerald-300 mt-0.5 font-semibold text-[11px]">FAISS + BM25</div>
+                    </div>
+                    <div class="glass-card rounded-xl p-2.5">
+                        <div class="text-[10px] text-slate-400">LLM REASONER</div>
+                        <div class="text-indigo-300 mt-0.5 font-semibold truncate text-[11px]">Qwen 3.8-27B</div>
+                    </div>
+                </div>
+            </div>
+
+        </section>
+
+        <!-- Right: Chat Interface -->
+        <section class="lg:col-span-8 flex flex-col h-[750px] glass-panel rounded-2xl shadow-2xl overflow-hidden border border-white/10">
+            
+            <!-- Chat Header -->
+            <div class="p-4 bg-slate-900/80 border-b border-white/10 flex items-center justify-between">
+                <div class="flex items-center gap-2.5">
+                    <div class="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
+                        <i data-lucide="messages-square" class="w-4 h-4"></i>
+                    </div>
+                    <div>
+                        <div class="text-xs font-semibold text-white flex items-center gap-2">
+                            <span>Document Grounded Chat</span>
+                            <span id="chatDocTag" class="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 truncate max-w-[200px]">The Ultimate Python Handbook.pdf</span>
+                        </div>
+                        <div class="text-[11px] text-slate-400">Answers are derived strictly from retrieved context snippets</div>
+                    </div>
+                </div>
+
+                <button id="clearChatBtn" type="button" class="text-xs text-slate-400 hover:text-white px-3 py-1.5 rounded-lg hover:bg-white/5 transition flex items-center gap-1.5 border border-white/5">
+                    <i data-lucide="trash-2" class="w-3.5 h-3.5 text-rose-400"></i>
+                    <span>Clear</span>
+                </button>
+            </div>
+
+            <!-- Messages Stream Area -->
+            <div id="chatMessages" class="flex-1 p-5 overflow-y-auto flex flex-col gap-4">
+                <!-- Welcome Bot Message -->
+                <div class="flex items-start gap-3">
+                    <div class="w-8 h-8 rounded-xl brand-gradient flex items-center justify-center shrink-0">
+                        <i data-lucide="bot" class="w-4 h-4 text-white"></i>
+                    </div>
+                    <div class="glass-card rounded-2xl rounded-tl-sm p-4 text-xs text-slate-200 max-w-[88%] leading-relaxed">
+                        <p class="font-semibold text-white mb-1">Welcome to DocuMind AI!</p>
+                        <p>I can answer questions, summarize topics, and locate specific technical explanations in your active PDF document. Every answer includes page-level citations for verification.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Suggested Prompt Chips -->
+            <div class="px-4 py-2 bg-slate-950/40 border-t border-white/5 flex items-center gap-2 overflow-x-auto">
+                <span class="text-[11px] text-slate-400 shrink-0 flex items-center gap-1">
+                    <i data-lucide="sparkles" class="w-3 h-3 text-amber-400"></i>
+                    Suggestions:
+                </span>
+                <button type="button" class="prompt-chip shrink-0 text-xs px-3 py-1 rounded-full bg-white/5 hover:bg-emerald-500/20 hover:text-emerald-200 border border-white/10 text-slate-300 transition">
+                    Summarize key topics & table of contents
+                </button>
+                <button type="button" class="prompt-chip shrink-0 text-xs px-3 py-1 rounded-full bg-white/5 hover:bg-emerald-500/20 hover:text-emerald-200 border border-white/10 text-slate-300 transition">
+                    What are list comprehensions and generators?
+                </button>
+                <button type="button" class="prompt-chip shrink-0 text-xs px-3 py-1 rounded-full bg-white/5 hover:bg-emerald-500/20 hover:text-emerald-200 border border-white/10 text-slate-300 transition">
+                    How do functions, *args, and **kwargs work?
+                </button>
+            </div>
+
+            <!-- Question Input Form -->
+            <form id="questionForm" class="p-4 bg-slate-900/70 border-t border-white/10">
+                <div class="glass-input rounded-2xl p-1.5 flex items-end gap-2">
+                    <textarea id="questionInput" rows="1"
+                        placeholder="Ask a question about this document (Enter to send, Shift+Enter for new line)..."
+                        class="w-full bg-transparent text-sm text-white placeholder-slate-400 px-3 py-2 focus:outline-none resize-none max-h-32 overflow-y-auto"></textarea>
+                    <button id="sendBtn" type="submit" class="px-4 py-2.5 rounded-xl brand-gradient text-white font-semibold text-xs shadow-lg hover:opacity-95 disabled:opacity-40 transition flex items-center gap-2 shrink-0">
+                        <span>Ask</span>
+                        <i data-lucide="send" class="w-3.5 h-3.5"></i>
+                    </button>
+                </div>
+            </form>
+        </section>
+
+    </main>
+
+    <!-- Source Snippet Modal / Drawer -->
+    <div id="snippetModal" class="hidden fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="glass-panel rounded-2xl max-w-xl w-full p-5 border border-white/15 shadow-2xl">
+            <div class="flex items-center justify-between pb-3 border-b border-white/10">
+                <div class="flex items-center gap-2">
+                    <i data-lucide="file-search" class="w-4 h-4 text-emerald-400"></i>
+                    <span id="modalTitle" class="text-xs font-semibold text-white">Retrieved Context Snippet</span>
+                </div>
+                <button id="closeModalBtn" class="text-slate-400 hover:text-white p-1 rounded-lg">
+                    <i data-lucide="x" class="w-4 h-4"></i>
+                </button>
+            </div>
+            <div id="modalBody" class="mt-3.5 text-xs text-slate-300 font-mono leading-relaxed bg-slate-950/80 p-4 rounded-xl border border-white/5 max-h-80 overflow-y-auto whitespace-pre-wrap"></div>
+        </div>
+    </div>
+
+    <script>
+        lucide.createIcons();
+
+        const API_BASE = window.location.protocol.startsWith('http')
+            ? window.location.origin
+            : 'http://127.0.0.1:8000';
+
+        const state = {
+            activeDocument: 'The Ultimate Python Handbook.pdf',
+            documents: [],
+            chatHistory: {},
+            isLoading: false
+        };
+
+        // DOM Elements
+        const statusDot = document.getElementById('statusDot');
+        const statusText = document.getElementById('statusText');
+        const refreshDocsBtn = document.getElementById('refreshDocsBtn');
+        const documentList = document.getElementById('documentList');
+        const docCountBadge = document.getElementById('docCountBadge');
+        const activeDocTitle = document.getElementById('activeDocTitle');
+        const activeDocSub = document.getElementById('activeDocSub');
+        const chatDocTag = document.getElementById('chatDocTag');
+        const chatMessages = document.getElementById('chatMessages');
+        const questionForm = document.getElementById('questionForm');
+        const questionInput = document.getElementById('questionInput');
+        const sendBtn = document.getElementById('sendBtn');
+        const clearChatBtn = document.getElementById('clearChatBtn');
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+        const uploadProgress = document.getElementById('uploadProgress');
+        const uploadStatusText = document.getElementById('uploadStatusText');
+        const snippetModal = document.getElementById('snippetModal');
+        const modalTitle = document.getElementById('modalTitle');
+        const modalBody = document.getElementById('modalBody');
+        const closeModalBtn = document.getElementById('closeModalBtn');
+
+        function escapeHtml(str) {
+            return str.replace(/[&<>'"]/g, t => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[t]));
+        }
+
+        function formatMarkdown(text) {
+            let safe = escapeHtml(text);
+            // Code blocks
+            safe = safe.replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>');
+            // Inline code
+            safe = safe.replace(/`([^`]+)`/g, '<code>$1</code>');
+            // Bold
+            safe = safe.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+            
+            const lines = safe.split('\n');
+            let html = '';
+            for (let line of lines) {
+                const trimmed = line.trim();
+                if (/^[-*•]\s+/.test(trimmed)) {
+                    html += `<li>${trimmed.replace(/^[-*•]\s+/, '')}</li>`;
+                } else if (/^\d+\.\s+/.test(trimmed)) {
+                    html += `<li>${trimmed.replace(/^\d+\.\s+/, '')}</li>`;
+                } else if (trimmed.length > 0 && !trimmed.startsWith('<pre>') && !trimmed.endsWith('</pre>')) {
+                    html += `<p>${trimmed}</p>`;
+                } else {
+                    html += trimmed;
+                }
+            }
+            return html || `<p>${safe}</p>`;
+        }
+
+        function showSnippetModal(page, snippet) {
+            modalTitle.textContent = `Retrieved Context • Page ${page}`;
+            modalBody.textContent = snippet;
+            snippetModal.classList.remove('hidden');
+        }
+
+        closeModalBtn.addEventListener('click', () => snippetModal.classList.add('hidden'));
+        snippetModal.addEventListener('click', (e) => {
+            if (e.target === snippetModal) snippetModal.classList.add('hidden');
+        });
+
+        async function checkHealth() {
+            try {
+                const res = await fetch(`${API_BASE}/health`, { signal: AbortSignal.timeout(4000) });
+                if (res.ok) {
+                    const data = await res.json();
+                    statusDot.className = "w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_#34d399]";
+                    statusText.textContent = "FastAPI Connected";
+                    if (!state.activeDocument && data.default_document) {
+                        selectDocument(data.default_document);
+                    }
+                    return true;
+                }
+            } catch (e) {
+                statusDot.className = "w-2 h-2 rounded-full bg-amber-400 shadow-[0_0_8px_#fbbf24]";
+                statusText.textContent = "Server Offline";
+            }
+            return false;
+        }
+
+        async function fetchDocuments() {
+            try {
+                const res = await fetch(`${API_BASE}/documents`);
+                if (res.ok) {
+                    const data = await res.json();
+                    state.documents = data.documents || [];
+                    renderDocumentList();
+                }
+            } catch (e) {
+                console.error("Failed to fetch documents:", e);
+            }
+        }
+
+        function renderDocumentList() {
+            docCountBadge.textContent = `${state.documents.length} file${state.documents.length === 1 ? '' : 's'}`;
+            if (state.documents.length === 0) {
+                documentList.innerHTML = `<div class="text-xs text-slate-500 p-3 text-center">No PDF files uploaded yet.</div>`;
+                return;
+            }
+
+            let html = '';
+            state.documents.forEach(doc => {
+                const isActive = doc.filename === state.activeDocument;
+                html += `
+                    <div onclick="selectDocument('${escapeHtml(doc.filename)}')" class="p-2.5 rounded-xl cursor-pointer transition flex items-center justify-between border ${isActive ? 'bg-emerald-500/10 border-emerald-500/30 text-white' : 'glass-card border-white/5 hover:border-white/15 text-slate-300'}">
+                        <div class="flex items-center gap-2.5 min-w-0 pr-2">
+                            <i data-lucide="file-text" class="w-4 h-4 shrink-0 ${isActive ? 'text-emerald-400' : 'text-slate-400'}"></i>
+                            <div class="truncate">
+                                <div class="text-xs font-medium truncate">${escapeHtml(doc.filename)}</div>
+                                <div class="text-[10px] text-slate-400">${doc.pages} pages • ${doc.size_mb} MB</div>
+                            </div>
+                        </div>
+                        <span class="text-[10px] font-mono px-2 py-0.5 rounded ${isActive ? 'bg-emerald-500/20 text-emerald-300' : 'bg-white/5 text-slate-400'}">
+                            ${isActive ? 'Active' : 'Select'}
+                        </span>
+                    </div>
+                `;
+            });
+            documentList.innerHTML = html;
+            lucide.createIcons();
+        }
+
+        function selectDocument(filename) {
+            state.activeDocument = filename;
+            const doc = state.documents.find(d => d.filename === filename);
+            activeDocTitle.textContent = filename;
+            chatDocTag.textContent = filename;
+            if (doc) {
+                activeDocSub.textContent = `${doc.pages} Pages • ${doc.size_mb} MB`;
+            }
+            renderDocumentList();
+            renderChatMessages();
+        }
+
+        function renderChatMessages() {
+            const history = state.chatHistory[state.activeDocument] || [];
+            let content = `
+                <div class="flex items-start gap-3">
+                    <div class="w-8 h-8 rounded-xl brand-gradient flex items-center justify-center shrink-0">
+                        <i data-lucide="bot" class="w-4 h-4 text-white"></i>
+                    </div>
+                    <div class="glass-card rounded-2xl rounded-tl-sm p-4 text-xs text-slate-200 max-w-[88%] leading-relaxed">
+                        Connected to <code class="text-emerald-300 font-mono">${escapeHtml(state.activeDocument)}</code>. Ask any technical or conceptual question to begin!
+                    </div>
+                </div>
+            `;
+
+            history.forEach((msg, idx) => {
+                if (msg.role === 'user') {
+                    content += `
+                        <div class="flex items-start justify-end gap-3">
+                            <div class="brand-gradient rounded-2xl rounded-tr-sm px-4 py-2.5 max-w-[82%] text-xs text-white shadow-lg">
+                                <p class="leading-relaxed whitespace-pre-wrap">${escapeHtml(msg.text)}</p>
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    let sourcesHtml = '';
+                    if (msg.sources && msg.sources.length > 0) {
+                        sourcesHtml = `
+                            <div class="mt-3 pt-2.5 border-t border-white/10 flex flex-wrap items-center gap-1.5">
+                                <span class="text-[10px] text-slate-400 font-semibold uppercase">Retrieved Pages:</span>
+                                ${msg.sources.map((src, sIdx) => `
+                                    <button onclick="window.viewSourceSnippet(${idx}, ${sIdx})" class="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 transition flex items-center gap-1">
+                                        <i data-lucide="file-check" class="w-3 h-3"></i> Page ${src.page}
+                                    </button>
+                                `).join('')}
+                            </div>
+                        `;
+                    }
+
+                    content += `
+                        <div class="flex items-start gap-3">
+                            <div class="w-8 h-8 rounded-xl brand-gradient flex items-center justify-center shrink-0">
+                                <i data-lucide="sparkles" class="w-4 h-4 text-white"></i>
+                            </div>
+                            <div class="glass-card rounded-2xl rounded-tl-sm p-4 max-w-[88%] text-xs text-slate-200 flex-1">
+                                <div class="rag-answer">${formatMarkdown(msg.text)}</div>
+                                ${sourcesHtml}
+                            </div>
+                        </div>
+                    `;
+                }
+            });
+
+            if (state.isLoading) {
+                content += `
+                    <div class="flex items-start gap-3">
+                        <div class="w-8 h-8 rounded-xl brand-gradient flex items-center justify-center shrink-0">
+                            <i data-lucide="sparkles" class="w-4 h-4 text-white"></i>
+                        </div>
+                        <div class="glass-card rounded-2xl rounded-tl-sm p-4 text-xs text-slate-300 flex items-center gap-2">
+                            <span class="text-emerald-400 font-medium">Searching FAISS MMR & BM25 index...</span>
+                            <span class="flex items-center gap-1 ml-1">
+                                <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 typing-dot"></span>
+                                <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 typing-dot"></span>
+                                <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 typing-dot"></span>
+                            </span>
+                        </div>
+                    </div>
+                `;
+            }
+
+            chatMessages.innerHTML = content;
+            lucide.createIcons();
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        window.viewSourceSnippet = function(msgIdx, srcIdx) {
+            const history = state.chatHistory[state.activeDocument] || [];
+            const msg = history[msgIdx];
+            if (msg && msg.sources && msg.sources[srcIdx]) {
+                const src = msg.sources[srcIdx];
+                showSnippetModal(src.page, src.snippet);
+            }
+        };
+
+        async function handleAskQuestion(query) {
+            const clean = query.trim();
+            if (!clean || state.isLoading) return;
+
+            state.isLoading = true;
+            sendBtn.disabled = true;
+
+            if (!state.chatHistory[state.activeDocument]) {
+                state.chatHistory[state.activeDocument] = [];
+            }
+            state.chatHistory[state.activeDocument].push({ role: 'user', text: clean });
+            renderChatMessages();
+
+            try {
+                const res = await fetch(`${API_BASE}/ask`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ question: clean, filename: state.activeDocument })
+                });
+
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.detail || `Server returned ${res.status}`);
+
+                state.chatHistory[state.activeDocument].push({
+                    role: 'assistant',
+                    text: data.answer || "No response generated.",
+                    sources: data.sources || []
+                });
+            } catch (err) {
+                state.chatHistory[state.activeDocument].push({
+                    role: 'assistant',
+                    text: `**Error**: ${err.message}. Make sure the FastAPI server is running with \`python pdfchatbot.py\`.`,
+                    sources: []
+                });
+            } finally {
+                state.isLoading = false;
+                sendBtn.disabled = false;
+                renderChatMessages();
+            }
+        }
+
+        // Form Submit
+        questionForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const val = questionInput.value;
+            questionInput.value = '';
+            handleAskQuestion(val);
+        });
+
+        // Enter key to submit
+        questionInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                questionForm.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+            }
+        });
+
+        // Prompt Chips
+        document.querySelectorAll('.prompt-chip').forEach(chip => {
+            chip.addEventListener('click', () => handleAskQuestion(chip.textContent.trim()));
+        });
+
+        // Clear Chat
+        clearChatBtn.addEventListener('click', () => {
+            state.chatHistory[state.activeDocument] = [];
+            renderChatMessages();
+        });
+
+        // Refresh docs
+        refreshDocsBtn.addEventListener('click', () => {
+            checkHealth();
+            fetchDocuments();
+        });
+
+        // Drag & Drop Upload
+        dropZone.addEventListener('click', () => fileInput.click());
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('border-emerald-400');
+        });
+        dropZone.addEventListener('dragleave', () => dropZone.classList.remove('border-emerald-400'));
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('border-emerald-400');
+            if (e.dataTransfer.files.length > 0) {
+                handleFileUpload(e.dataTransfer.files[0]);
+            }
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                handleFileUpload(e.target.files[0]);
+            }
+        });
+
+        async function handleFileUpload(file) {
+            if (!file.name.toLowerCase().endswith && !file.name.toLowerCase().endsWith('.pdf')) {
+                alert("Please upload a valid PDF document.");
+                return;
+            }
+
+            uploadProgress.classList.remove('hidden');
+            uploadStatusText.textContent = `Uploading and indexing '${file.name}'...`;
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            try {
+                const res = await fetch(`${API_BASE}/upload`, {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.detail || "Upload failed");
+
+                uploadStatusText.textContent = `Successfully indexed '${data.filename}'!`;
+                await fetchDocuments();
+                selectDocument(data.filename);
+                setTimeout(() => uploadProgress.classList.add('hidden'), 2500);
+            } catch (err) {
+                alert(`Upload failed: ${err.message}`);
+                uploadProgress.classList.add('hidden');
+            }
+        }
+
+        // Initialize
+        (async () => {
+            await checkHealth();
+            await fetchDocuments();
+            renderChatMessages();
+            setInterval(checkHealth, 10000);
+        })();
+    </script>
+</body>
+</html>
