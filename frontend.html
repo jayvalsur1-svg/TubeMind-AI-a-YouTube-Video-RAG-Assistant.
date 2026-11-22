@@ -1,0 +1,677 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TubeMind AI — YouTube RAG Assistant</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace'],
+                    },
+                    colors: {
+                        brand: {
+                            crimson: '#FF2E54',
+                            coral: '#FF6B4A',
+                            violet: '#7C3AED',
+                            indigo: '#4F46E5'
+                        }
+                    },
+                    animation: {
+                        'pulse-slow': 'pulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        body {
+            background-color: #07090E;
+            color: #F3F4F6;
+            overflow-x: hidden;
+        }
+        .glass-panel {
+            background: rgba(17, 21, 34, 0.75);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+        .glass-card {
+            background: rgba(26, 32, 48, 0.55);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.07);
+        }
+        .glass-input {
+            background: rgba(11, 14, 23, 0.85);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            transition: all 0.25s ease;
+        }
+        .glass-input:focus-within {
+            border-color: rgba(255, 46, 84, 0.6);
+            box-shadow: 0 0 0 3px rgba(255, 46, 84, 0.15), 0 0 25px -5px rgba(124, 58, 237, 0.3);
+        }
+        .brand-gradient {
+            background: linear-gradient(135deg, #FF2E54 0%, #FF6B4A 35%, #7C3AED 100%);
+        }
+        .brand-gradient-text {
+            background: linear-gradient(135deg, #FF4D6D 0%, #FF8566 40%, #A78BFA 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: rgba(15, 23, 42, 0.3); }
+        ::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.15); border-radius: 9999px; }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(255, 46, 84, 0.5); }
+        .typing-dot {
+            animation: typingBounce 1.4s infinite ease-in-out both;
+        }
+        .typing-dot:nth-child(1) { animation-delay: -0.32s; }
+        .typing-dot:nth-child(2) { animation-delay: -0.16s; }
+        @keyframes typingBounce {
+            0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
+            40% { transform: scale(1); opacity: 1; }
+        }
+        .rag-answer p { margin-bottom: 0.75rem; line-height: 1.65; }
+        .rag-answer p:last-child { margin-bottom: 0; }
+        .rag-answer ul { list-style-type: disc; padding-left: 1.35rem; margin-bottom: 0.75rem; }
+        .rag-answer li { margin-bottom: 0.35rem; line-height: 1.6; }
+        .rag-answer code {
+            font-family: 'JetBrains Mono', monospace;
+            background: rgba(255, 255, 255, 0.09);
+            padding: 0.15rem 0.4rem;
+            border-radius: 0.35rem;
+            font-size: 0.85em;
+            color: #FCA5A5;
+        }
+        .rag-answer strong { color: #FFFFFF; font-weight: 600; }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col relative">
+
+    <div class="fixed inset-0 overflow-hidden pointer-events-none z-0">
+        <div class="absolute -top-40 -left-40 w-96 h-96 bg-rose-600/15 rounded-full blur-[130px] animate-pulse-slow"></div>
+        <div class="absolute top-1/3 -right-32 w-[28rem] h-[28rem] bg-violet-600/15 rounded-full blur-[140px] animate-pulse-slow"></div>
+        <div class="absolute -bottom-48 left-1/3 w-96 h-96 bg-indigo-600/10 rounded-full blur-[120px]"></div>
+    </div>
+
+    <!-- Top Bar -->
+    <header class="sticky top-0 z-30 glass-panel border-b border-white/10 px-4 sm:px-6 lg:px-8 py-3.5">
+        <div class="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-4">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl brand-gradient flex items-center justify-center shadow-lg shadow-rose-500/25">
+                    <i data-lucide="play" class="w-5 h-5 text-white fill-white ml-0.5"></i>
+                </div>
+                <div>
+                    <div class="flex items-center gap-2">
+                        <h1 class="text-lg font-bold tracking-tight text-white">TubeMind <span class="brand-gradient-text">RAG</span></h1>
+                        <span class="text-[11px] font-mono uppercase tracking-wider px-2 py-0.5 rounded-full bg-white/5 border border-white/10 text-slate-300">Qwen 3.8 + Chroma</span>
+                    </div>
+                    <p class="text-xs text-slate-400 hidden sm:block">Instant YouTube Transcript Vector Search & Grounded Q&A</p>
+                </div>
+            </div>
+
+            <div class="flex items-center gap-2.5 sm:gap-3">
+                <button id="demoModeToggle" type="button" class="flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-medium border bg-slate-800/70 border-white/10 text-slate-300 hover:border-white/20">
+                    <span id="statusDot" class="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_#34d399]"></span>
+                    <span id="modeLabel">FastAPI Live</span>
+                </button>
+
+                <button id="openSettingsBtn" type="button" class="flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-medium glass-card hover:bg-white/10 text-slate-200 border border-white/10">
+                    <i data-lucide="sliders-horizontal" class="w-3.5 h-3.5 text-rose-400"></i>
+                    <span class="hidden md:inline">API Endpoint</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Settings Bar -->
+    <div id="settingsDrawer" class="hidden relative z-20 bg-slate-900/90 border-b border-white/10 backdrop-blur-xl">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4">
+            <div class="flex-1 flex flex-col sm:flex-row sm:items-center gap-3">
+                <label for="apiUrlInput" class="text-xs font-semibold uppercase tracking-wider text-slate-400 whitespace-nowrap flex items-center gap-1.5">
+                    <i data-lucide="server" class="w-3.5 h-3.5 text-violet-400"></i>
+                    FastAPI `/ask` URL:
+                </label>
+                <div class="flex-1 flex items-center gap-2">
+                    <input id="apiUrlInput" type="url" value="http://127.0.0.1:8000/ask" 
+                        class="w-full font-mono text-xs px-3.5 py-2 rounded-xl glass-input text-white focus:outline-none" />
+                    <button id="saveApiBtn" class="px-3.5 py-2 rounded-xl text-xs font-semibold bg-violet-600 hover:bg-violet-500 text-white transition whitespace-nowrap">
+                        Save URL
+                    </button>
+                </div>
+            </div>
+
+            <div class="flex items-center justify-between md:justify-end gap-4 pt-2 md:pt-0 border-t md:border-t-0 border-white/5">
+                <label class="flex items-center gap-2 cursor-pointer text-xs text-slate-300 select-none">
+                    <input id="autoFallbackCheckbox" type="checkbox" checked class="rounded bg-slate-800 border-white/20 text-rose-500">
+                    <span>Auto-fallback to Demo if offline</span>
+                </label>
+                <button id="closeSettingsBtn" class="p-1.5 rounded-lg text-slate-400 hover:text-white">
+                    <i data-lucide="x" class="w-4 h-4"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <main class="relative z-10 flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        
+        <!-- Left Column -->
+        <section class="lg:col-span-5 flex flex-col gap-5 lg:sticky lg:top-24">
+            <div class="glass-panel rounded-2xl p-5 shadow-2xl">
+                <div class="flex items-center justify-between mb-3">
+                    <label for="videoInput" class="text-xs font-semibold uppercase tracking-wider text-slate-300 flex items-center gap-2">
+                        <i data-lucide="youtube" class="w-4 h-4 text-rose-500"></i>
+                        Target YouTube Video
+                    </label>
+                    <span id="extractedIdBadge" class="font-mono text-[11px] px-2.5 py-0.5 rounded-md bg-rose-500/15 text-rose-300 border border-rose-500/30">
+                        ID: M7lc1UVf-VE
+                    </span>
+                </div>
+
+                <div class="glass-input rounded-xl p-1.5 flex items-center gap-2">
+                    <div class="pl-2.5 text-slate-400">
+                        <i data-lucide="link" class="w-4 h-4"></i>
+                    </div>
+                    <input id="videoInput" type="text" 
+                        value="https://www.youtube.com/watch?v=M7lc1UVf-VE"
+                        placeholder="Paste YouTube URL or 11-char Video ID..."
+                        class="w-full bg-transparent text-sm text-white placeholder-slate-500 focus:outline-none py-1.5 font-mono" />
+                    <button id="loadVideoBtn" type="button" class="px-3.5 py-2 rounded-lg brand-gradient text-xs font-semibold text-white shadow-md hover:opacity-95 transition flex items-center gap-1.5 whitespace-nowrap">
+                        <span>Load</span>
+                        <i data-lucide="arrow-right" class="w-3.5 h-3.5"></i>
+                    </button>
+                </div>
+                <p id="videoParseHint" class="text-[11px] text-slate-400 mt-2 flex items-center gap-1.5">
+                    <i data-lucide="check-circle-2" class="w-3.5 h-3.5 text-emerald-400 shrink-0"></i>
+                    <span>Ready to parse URL or Video ID.</span>
+                </p>
+
+                <div class="mt-3.5 pt-3 border-t border-white/5">
+                    <span class="text-[11px] text-slate-400 block mb-2">Preset examples with English captions:</span>
+                    <div class="flex flex-wrap gap-1.5">
+                        <button type="button" data-vid="M7lc1UVf-VE" class="preset-vid-btn text-[11px] px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 border border-white/5 transition flex items-center gap-1">
+                            <i data-lucide="tv" class="w-3 h-3 text-rose-400"></i> YouTube API
+                        </button>
+                        <button type="button" data-vid="aircAruvnKk" class="preset-vid-btn text-[11px] px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 border border-white/5 transition flex items-center gap-1">
+                            <i data-lucide="brain-circuit" class="w-3 h-3 text-violet-400"></i> 3Blue1Brown NN
+                        </button>
+                        <button type="button" data-vid="zjkBMFhNj_g" class="preset-vid-btn text-[11px] px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 border border-white/5 transition flex items-center gap-1">
+                            <i data-lucide="sparkles" class="w-3 h-3 text-amber-400"></i> Karpathy LLMs
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="glass-panel rounded-2xl overflow-hidden shadow-2xl border border-white/10">
+                <div class="relative aspect-video w-full bg-slate-950">
+                    <iframe id="ytPlayerFrame" class="w-full h-full"
+                        src="https://www.youtube.com/embed/M7lc1UVf-VE?rel=0" 
+                        title="YouTube video player" frameborder="0" allowfullscreen>
+                    </iframe>
+                </div>
+                <div class="p-4 bg-slate-900/60 border-t border-white/5 flex flex-col gap-3">
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs font-medium text-slate-300 flex items-center gap-1.5">
+                            <i data-lucide="cpu" class="w-3.5 h-3.5 text-violet-400"></i>
+                            Pipeline Telemetry
+                        </span>
+                        <span id="cacheStatusBadge" class="text-[11px] font-mono px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">
+                            Ready
+                        </span>
+                    </div>
+                    <div class="grid grid-cols-3 gap-2 text-center text-xs">
+                        <div class="glass-card rounded-xl p-2">
+                            <div class="text-[10px] text-slate-400">EMBEDDINGS</div>
+                            <div class="text-white mt-0.5 font-semibold truncate">MiniLM-L6-v2</div>
+                        </div>
+                        <div class="glass-card rounded-xl p-2">
+                            <div class="text-[10px] text-slate-400">VECTOR DB</div>
+                            <div class="text-white mt-0.5 font-semibold">Chroma (k=4)</div>
+                        </div>
+                        <div class="glass-card rounded-xl p-2">
+                            <div class="text-[10px] text-slate-400">LLM</div>
+                            <div class="text-white mt-0.5 font-semibold truncate">Qwen3.8-27B</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Right Column (Chat) -->
+        <section class="lg:col-span-7 flex flex-col glass-panel rounded-2xl shadow-2xl border border-white/10 h-[680px] max-h-[82vh] overflow-hidden">
+            <div class="px-5 py-4 border-b border-white/10 flex items-center justify-between bg-slate-900/40">
+                <div class="flex items-center gap-3">
+                    <div class="w-8 h-8 rounded-lg bg-violet-500/15 border border-violet-500/30 flex items-center justify-center text-violet-400">
+                        <i data-lucide="messages-square" class="w-4 h-4"></i>
+                    </div>
+                    <div>
+                        <h2 class="text-sm font-semibold text-white flex items-center gap-2">
+                            Transcript Q&A
+                            <span id="chatVideoTag" class="font-mono text-[11px] font-normal px-2 py-0.5 rounded bg-white/5 text-slate-300">yt_M7lc1UVf-VE</span>
+                        </h2>
+                    </div>
+                </div>
+                <button id="clearChatBtn" type="button" class="text-xs text-slate-400 hover:text-rose-400 px-2.5 py-1.5 rounded-lg hover:bg-white/5 transition flex items-center gap-1.5">
+                    <i data-lucide="trash-2" class="w-3.5 h-3.5"></i> Clear
+                </button>
+            </div>
+
+            <!-- Error Banner -->
+            <div id="errorAlertBanner" class="hidden mx-5 mt-4 p-3.5 rounded-xl bg-rose-950/80 border border-rose-500/40 text-rose-200 text-xs flex items-start justify-between gap-3 shadow-lg">
+                <div class="flex items-start gap-2.5">
+                    <i data-lucide="alert-triangle" class="w-4 h-4 text-rose-400 shrink-0 mt-0.5"></i>
+                    <div>
+                        <div id="errorAlertTitle" class="font-semibold text-rose-100">Backend Exception</div>
+                        <p id="errorAlertDetail" class="text-rose-300/90 mt-0.5 font-mono text-[11px]"></p>
+                    </div>
+                </div>
+                <button id="dismissErrorBtn" class="text-rose-400 hover:text-white p-1">
+                    <i data-lucide="x" class="w-4 h-4"></i>
+                </button>
+            </div>
+
+            <div id="chatMessages" class="flex-1 overflow-y-auto p-5 space-y-5 scroll-smooth"></div>
+
+            <div class="px-5 pt-2 pb-1 border-t border-white/5 bg-slate-950/30">
+                <div class="flex items-center gap-1.5 overflow-x-auto pb-1.5">
+                    <button type="button" class="prompt-chip shrink-0 text-xs px-3 py-1 rounded-full bg-white/5 hover:bg-rose-500/20 hover:text-rose-200 border border-white/10 text-slate-300 transition">
+                        Summarize the key takeaways
+                    </button>
+                    <button type="button" class="prompt-chip shrink-0 text-xs px-3 py-1 rounded-full bg-white/5 hover:bg-violet-500/20 hover:text-violet-200 border border-white/10 text-slate-300 transition">
+                        What are the main concepts covered?
+                    </button>
+                </div>
+            </div>
+
+            <form id="questionForm" class="p-4 bg-slate-900/70 border-t border-white/10">
+                <div class="glass-input rounded-2xl p-1.5 flex items-end gap-2">
+                    <textarea id="questionInput" rows="1"
+                        placeholder="Ask anything about this video transcript..."
+                        class="w-full bg-transparent text-sm text-white placeholder-slate-400 px-3 py-2 focus:outline-none resize-none max-h-32 overflow-y-auto"></textarea>
+                    <button id="sendBtn" type="submit" class="px-4 py-2.5 rounded-xl brand-gradient text-white font-semibold text-xs shadow-lg hover:opacity-95 disabled:opacity-40 transition flex items-center gap-2 shrink-0">
+                        <span>Ask</span>
+                        <i data-lucide="send" class="w-3.5 h-3.5"></i>
+                    </button>
+                </div>
+            </form>
+        </section>
+    </main>
+
+    <script>
+        lucide.createIcons();
+
+        // Determine API endpoint:
+        // When served over HTTP/HTTPS, always default to current server origin to avoid port conflicts with other apps.
+        // When loaded directly as file://, allow saved URL or probe ports 8000/8001.
+        const isHttp = window.location.protocol.startsWith('http');
+        const defaultApiEndpoint = isHttp ? `${window.location.origin}/ask` : 'http://127.0.0.1:8000/ask';
+        const savedApiUrl = localStorage.getItem('tubemind_api_url');
+
+        const state = {
+            apiUrl: (isHttp ? defaultApiEndpoint : (savedApiUrl || defaultApiEndpoint)),
+            videoId: 'M7lc1UVf-VE',
+            demoMode: false,
+            autoFallback: true,
+            isLoading: false,
+            cachedVideos: new Set(),
+            sessions: { 'M7lc1UVf-VE': [] }
+        };
+
+        const videoInput = document.getElementById('videoInput');
+        const loadVideoBtn = document.getElementById('loadVideoBtn');
+        const extractedIdBadge = document.getElementById('extractedIdBadge');
+        const videoParseHint = document.getElementById('videoParseHint');
+        const ytPlayerFrame = document.getElementById('ytPlayerFrame');
+        const chatVideoTag = document.getElementById('chatVideoTag');
+        const cacheStatusBadge = document.getElementById('cacheStatusBadge');
+        const chatMessages = document.getElementById('chatMessages');
+        const questionForm = document.getElementById('questionForm');
+        const questionInput = document.getElementById('questionInput');
+        const sendBtn = document.getElementById('sendBtn');
+        const clearChatBtn = document.getElementById('clearChatBtn');
+
+        const demoModeToggle = document.getElementById('demoModeToggle');
+        const statusDot = document.getElementById('statusDot');
+        const modeLabel = document.getElementById('modeLabel');
+        const openSettingsBtn = document.getElementById('openSettingsBtn');
+        const closeSettingsBtn = document.getElementById('closeSettingsBtn');
+        const settingsDrawer = document.getElementById('settingsDrawer');
+        const apiUrlInput = document.getElementById('apiUrlInput');
+        const saveApiBtn = document.getElementById('saveApiBtn');
+        const autoFallbackCheckbox = document.getElementById('autoFallbackCheckbox');
+
+        const errorAlertBanner = document.getElementById('errorAlertBanner');
+        const errorAlertTitle = document.getElementById('errorAlertTitle');
+        const errorAlertDetail = document.getElementById('errorAlertDetail');
+        const dismissErrorBtn = document.getElementById('dismissErrorBtn');
+
+        apiUrlInput.value = state.apiUrl;
+
+        function updateCacheBadge() {
+            if (!cacheStatusBadge) return;
+            if (state.cachedVideos.has(state.videoId)) {
+                cacheStatusBadge.textContent = "Indexed in Cache";
+                cacheStatusBadge.className = "text-[11px] font-mono px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/20";
+            } else {
+                cacheStatusBadge.textContent = "Ready to Index";
+                cacheStatusBadge.className = "text-[11px] font-mono px-2 py-0.5 rounded bg-violet-500/10 text-violet-300 border border-violet-500/20";
+            }
+        }
+
+        async function checkBackendHealth() {
+            const probeCandidates = [state.apiUrl];
+            if (!isHttp) {
+                if (!probeCandidates.includes('http://127.0.0.1:8000/ask')) probeCandidates.push('http://127.0.0.1:8000/ask');
+                if (!probeCandidates.includes('http://127.0.0.1:8001/ask')) probeCandidates.push('http://127.0.0.1:8001/ask');
+            }
+
+            for (const candidate of probeCandidates) {
+                try {
+                    const base = candidate.replace(/\/ask\/?$/, '');
+                    const healthUrl = `${base}/health`;
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), 2500);
+
+                    const res = await fetch(healthUrl, { signal: controller.signal });
+                    clearTimeout(timeoutId);
+
+                    if (res.ok) {
+                        const data = await res.json();
+                        // Verify this is actually TubeMind and not another service on that port
+                        if (data && (data.service === 'TubeMind RAG API' || 'cached_videos' in data)) {
+                            state.apiUrl = candidate;
+                            apiUrlInput.value = candidate;
+                            statusDot.className = "w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_#34d399]";
+                            modeLabel.textContent = "FastAPI Connected";
+                            if (data.cached_videos && Array.isArray(data.cached_videos)) {
+                                state.cachedVideos = new Set(data.cached_videos);
+                                updateCacheBadge();
+                            }
+                            return true;
+                        }
+                    }
+                } catch (e) {
+                    // Try next candidate
+                }
+            }
+
+            statusDot.className = "w-2 h-2 rounded-full bg-amber-400 shadow-[0_0_8px_#fbbf24]";
+            modeLabel.textContent = state.autoFallback ? "Server Offline (Demo)" : "Disconnected";
+            return false;
+        }
+
+        function extractYouTubeId(input) {
+            if (!input) return null;
+            const trimmed = input.trim();
+            if (/^[a-zA-Z0-9_-]{11}$/.test(trimmed)) return trimmed;
+            const regex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?|shorts|live)\/|.*[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})/;
+            const match = trimmed.match(regex);
+            return match ? match[1] : null;
+        }
+
+        function setActiveVideo(rawInput) {
+            const parsedId = extractYouTubeId(rawInput);
+            if (!parsedId) {
+                videoParseHint.innerHTML = `<span class="text-rose-400">Invalid YouTube URL or ID. Please provide an 11-character ID.</span>`;
+                return false;
+            }
+            state.videoId = parsedId;
+            extractedIdBadge.textContent = `ID: ${parsedId}`;
+            chatVideoTag.textContent = `yt_${parsedId}`;
+            ytPlayerFrame.src = `https://www.youtube.com/embed/${parsedId}?rel=0`;
+            videoParseHint.innerHTML = `<span class="text-emerald-300">Ready for video <code>${parsedId}</code></span>`;
+            if (!state.sessions[parsedId]) state.sessions[parsedId] = [];
+            updateCacheBadge();
+            renderSessionMessages();
+            return true;
+        }
+
+        function escapeHtml(str) {
+            return str.replace(/[&<>'"]/g, t => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[t]));
+        }
+
+        function formatMarkdown(text) {
+            let safe = escapeHtml(text);
+            safe = safe.replace(/`([^`]+)`/g, '<code>$1</code>');
+            safe = safe.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+            const lines = safe.split('\n');
+            let html = '';
+            let inList = false;
+            for (let line of lines) {
+                const trimmed = line.trim();
+                if (/^[-*•]\s+/.test(trimmed)) {
+                    if (!inList) {
+                        html += '<ul>';
+                        inList = true;
+                    }
+                    html += `<li>${trimmed.replace(/^[-*•]\s+/, '')}</li>`;
+                } else {
+                    if (inList) {
+                        html += '</ul>';
+                        inList = false;
+                    }
+                    if (trimmed.length > 0) {
+                        html += `<p>${trimmed}</p>`;
+                    }
+                }
+            }
+            if (inList) {
+                html += '</ul>';
+            }
+            return html || `<p>${safe}</p>`;
+        }
+
+        function renderSessionMessages() {
+            const history = state.sessions[state.videoId] || [];
+            let content = `
+                <div class="flex items-start gap-3">
+                    <div class="w-8 h-8 rounded-xl brand-gradient flex items-center justify-center shrink-0">
+                        <i data-lucide="bot" class="w-4 h-4 text-white"></i>
+                    </div>
+                    <div class="glass-card rounded-2xl rounded-tl-sm p-4 text-xs text-slate-200">
+                        Connected to video <code class="text-rose-300 font-mono">${state.videoId}</code>. Ask any question about this video's content.
+                    </div>
+                </div>
+            `;
+
+            history.forEach(msg => {
+                if (msg.role === 'user') {
+                    content += `
+                        <div class="flex items-start justify-end gap-3">
+                            <div class="brand-gradient rounded-2xl rounded-tr-sm px-4 py-2.5 max-w-[82%] text-xs text-white">
+                                <p class="leading-relaxed whitespace-pre-wrap">${escapeHtml(msg.text)}</p>
+                            </div>
+                        </div>
+                    `;
+                } else if (msg.role === 'error') {
+                    content += `
+                        <div class="flex items-start gap-3">
+                            <div class="w-8 h-8 rounded-xl bg-rose-600/20 border border-rose-500/40 flex items-center justify-center shrink-0">
+                                <i data-lucide="alert-circle" class="w-4 h-4 text-rose-400"></i>
+                            </div>
+                            <div class="glass-card rounded-2xl rounded-tl-sm p-4 max-w-[88%] text-xs text-rose-200 border border-rose-500/30 flex-1">
+                                <div class="rag-answer">${formatMarkdown(msg.text)}</div>
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    content += `
+                        <div class="flex items-start gap-3">
+                            <div class="w-8 h-8 rounded-xl brand-gradient flex items-center justify-center shrink-0">
+                                <i data-lucide="sparkles" class="w-4 h-4 text-white"></i>
+                            </div>
+                            <div class="glass-card rounded-2xl rounded-tl-sm p-4 max-w-[88%] text-xs text-slate-200 flex-1">
+                                <div class="rag-answer">${formatMarkdown(msg.text)}</div>
+                            </div>
+                        </div>
+                    `;
+                }
+            });
+
+            if (state.isLoading) {
+                content += `
+                    <div class="flex items-start gap-3">
+                        <div class="w-8 h-8 rounded-xl brand-gradient flex items-center justify-center shrink-0">
+                            <i data-lucide="sparkles" class="w-4 h-4 text-white"></i>
+                        </div>
+                        <div class="glass-card rounded-2xl rounded-tl-sm p-4 text-xs text-slate-300 flex items-center gap-2">
+                            <span class="text-rose-400 font-medium">Processing transcript & vector search</span>
+                            <span class="flex items-center gap-1 ml-1">
+                                <span class="w-1.5 h-1.5 rounded-full bg-rose-400 typing-dot"></span>
+                                <span class="w-1.5 h-1.5 rounded-full bg-rose-400 typing-dot"></span>
+                                <span class="w-1.5 h-1.5 rounded-full bg-rose-400 typing-dot"></span>
+                            </span>
+                        </div>
+                    </div>
+                `;
+            }
+
+            chatMessages.innerHTML = content;
+            lucide.createIcons();
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        async function handleAskQuestion(questionText) {
+            const clean = questionText.trim();
+            if (!clean || state.isLoading) return;
+            if (!setActiveVideo(videoInput.value)) return;
+
+            state.isLoading = true;
+            sendBtn.disabled = true;
+            state.sessions[state.videoId].push({ role: 'user', text: clean });
+            renderSessionMessages();
+
+            let response;
+            let isNetworkError = false;
+
+            try {
+                response = await fetch(state.apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ video_id: state.videoId, question: clean })
+                });
+            } catch (err) {
+                isNetworkError = true;
+            }
+
+            if (isNetworkError || !response) {
+                if (state.autoFallback) {
+                    state.sessions[state.videoId].push({
+                        role: 'assistant',
+                        text: `*(Demo Mode - Backend Unreachable)*: The backend at \`${state.apiUrl}\` is currently not responding. Run \`python youtubevideochatbot.py\` in your terminal to start the live RAG server.`
+                    });
+                } else {
+                    errorAlertTitle.textContent = "Backend Connection Failed";
+                    errorAlertDetail.textContent = `Could not connect to server at ${state.apiUrl}. Please verify the backend is running.`;
+                    errorAlertBanner.classList.remove('hidden');
+                }
+            } else {
+                try {
+                    const data = await response.json();
+                    if (!response.ok) {
+                        const errorMsg = data.detail || `Server returned error status ${response.status}`;
+                        state.sessions[state.videoId].push({
+                            role: 'error',
+                            text: `**Request Failed (${response.status})**:\n${errorMsg}`
+                        });
+                        errorAlertTitle.textContent = `Backend Error (${response.status})`;
+                        errorAlertDetail.textContent = errorMsg;
+                        errorAlertBanner.classList.remove('hidden');
+                    } else {
+                        state.sessions[state.videoId].push({
+                            role: 'assistant',
+                            text: data.answer || "No answer generated."
+                        });
+                        state.cachedVideos.add(state.videoId);
+                        updateCacheBadge();
+                        errorAlertBanner.classList.add('hidden');
+                        checkBackendHealth();
+                    }
+                } catch (parseErr) {
+                    state.sessions[state.videoId].push({
+                        role: 'error',
+                        text: `Failed to parse response from server: ${parseErr.message}`
+                    });
+                }
+            }
+
+            state.isLoading = false;
+            sendBtn.disabled = false;
+            renderSessionMessages();
+        }
+
+        loadVideoBtn.addEventListener('click', () => setActiveVideo(videoInput.value));
+        videoInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') setActiveVideo(videoInput.value); });
+
+        // Submit textarea on Enter without Shift
+        questionInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                questionForm.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+            }
+        });
+
+        document.querySelectorAll('.preset-vid-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const vid = btn.getAttribute('data-vid');
+                videoInput.value = `https://www.youtube.com/watch?v=${vid}`;
+                setActiveVideo(videoInput.value);
+            });
+        });
+
+        document.querySelectorAll('.prompt-chip').forEach(chip => {
+            chip.addEventListener('click', () => handleAskQuestion(chip.textContent.trim()));
+        });
+
+        questionForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const val = questionInput.value;
+            questionInput.value = '';
+            handleAskQuestion(val);
+        });
+
+        clearChatBtn.addEventListener('click', () => {
+            state.sessions[state.videoId] = [];
+            renderSessionMessages();
+        });
+
+        demoModeToggle.addEventListener('click', () => {
+            checkBackendHealth();
+        });
+
+        autoFallbackCheckbox.addEventListener('change', (e) => {
+            state.autoFallback = e.target.checked;
+        });
+
+        openSettingsBtn.addEventListener('click', () => settingsDrawer.classList.toggle('hidden'));
+        closeSettingsBtn.addEventListener('click', () => settingsDrawer.classList.add('hidden'));
+        saveApiBtn.addEventListener('click', () => {
+            state.apiUrl = apiUrlInput.value.trim();
+            localStorage.setItem('tubemind_api_url', state.apiUrl);
+            settingsDrawer.classList.add('hidden');
+            checkBackendHealth();
+        });
+        dismissErrorBtn.addEventListener('click', () => errorAlertBanner.classList.add('hidden'));
+
+        // Initial setup
+        renderSessionMessages();
+        updateCacheBadge();
+        checkBackendHealth();
+
+        // Periodic health check
+        setInterval(checkBackendHealth, 10000);
+    </script>
+</body>
+</html>
